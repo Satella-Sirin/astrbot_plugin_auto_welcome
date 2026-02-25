@@ -1,16 +1,15 @@
 from astrbot.api.event import filter, AstrMessageEvent
-from astrbot.api.star import Context, Star, register
+from astrbot.api.star import Context, Star
 from astrbot.api import logger
 from astrbot.core import AstrBotConfig
 import astrbot.api.message_components as Comp
 
-@register("auto_welcome", "Satella-Sirin", "自动欢迎新成员（支持白名单群）", "1.0.0")
 class AutoWelcomePlugin(Star):
-    def __init__(self, context: Context, config: AstrBotConfig = None):
+    def __init__(self, context: Context, config: dict = None):
         super().__init__(context)
         self.config = config or {}
         
-        # 从配置读取白名单群号，并转换为整数集合
+        # 从配置读取白名单群号，统一转换为整数集合
         raw_groups = self.config.get("target_groups", [])
         self.target_groups = set()
         for g in raw_groups:
@@ -41,23 +40,29 @@ class AutoWelcomePlugin(Star):
             if raw.get("post_type") == "notice" and raw.get("notice_type") == "group_increase":
                 group_id = raw.get("group_id")
                 user_id = raw.get("user_id")
-                logger.info(f"检测到入群事件: group_id={group_id}, user_id={user_id}")
+                logger.info(f"检测到入群事件: group_id={group_id}({type(group_id)}), user_id={user_id}")
 
-                if group_id not in self.target_groups:
-                    logger.info(f"群 {group_id} 不在白名单 {self.target_groups} 中，跳过")
+                # 将 group_id 转换为整数进行白名单检查（统一类型）
+                try:
+                    group_id_int = int(group_id)
+                except (ValueError, TypeError):
+                    logger.error(f"无法将群号 {group_id} 转换为整数，跳过")
+                    return
+
+                if group_id_int not in self.target_groups:
+                    logger.info(f"群 {group_id_int} 不在白名单 {self.target_groups} 中，跳过")
                     return
 
                 nickname = f"新成员({user_id})"
                 message = self.welcome_message.replace("{nickname}", nickname)
                 logger.info(f"准备发送欢迎消息: {message}")
 
-                # 按换行符拆分成多条消息发送
-                lines = message.split('\n')
-                for line in lines:
-                    if line.strip():
-                        yield event.chain_result([Comp.Plain(text=line)])
-                        logger.info(f"已发送分段: {line}")
-                logger.info(f"欢迎消息发送完成")
+                # ✅ 修正：直接发送完整消息（包含换行符），不再分段多次发送
+                try:
+                    yield event.chain_result([Comp.Plain(text=message)])
+                    logger.info(f"已向群 {group_id_int} 发送欢迎消息")
+                except Exception as e:
+                    logger.error(f"发送欢迎消息失败: {e}")
         except Exception as e:
             logger.error(f"处理入群事件异常: {e}")
 
