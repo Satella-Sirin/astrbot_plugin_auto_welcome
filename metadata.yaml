@@ -1,6 +1,6 @@
 name: astrbot_plugin_auto_welcome
 desc: 一个简单但强大的AstrBot插件，用于在指定QQ群中自动欢迎新成员。你可以通过WebUI轻松设置白名单群和欢迎语，支持变量{nickname}，并且消息中的每一行都会作为独立消息发送，避免长文本刷屏。插件完全基于配置，无需硬编码，即装即用。
-author: Satella
+author: Satella-Sirin
 version: 1.0.0
 repo: https://github.com/Satella-Sirin/astrbot_plugin_auto_welcome
 config_schema: target_groups, welcome_message
