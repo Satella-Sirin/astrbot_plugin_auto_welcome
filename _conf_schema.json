@@ -1,0 +1,15 @@
+{
+  "target_groups": {
+    "description": "启用自动欢迎的群号列表",
+    "type": "list",
+    "hint": "每行输入一个QQ群号，例如 12345678",
+    "default": [],
+    "item_type": "integer"
+  },
+  "welcome_message": {
+    "description": "欢迎消息模板",
+    "type": "text",
+    "hint": "直接在文本框内按回车换行（不要手动输入\\n），支持 {nickname} 变量",
+    "default": "新人先看群精华\n\n不接受可以直接退"
+  }
+}
