@@ -11,7 +11,7 @@ class AutoWelcomePlugin(Star):
         self.config = config or {}
         
         # ====== 硬编码白名单群号（请在此修改您的群号）=======
-        self.target_groups = {979563367, 1085866321}   # 替换成您自己的群号，多个用逗号分隔
+        self.target_groups = {111, 222}   # 替换成您自己的群号，多个用逗号分隔
         
         # 欢迎消息从配置读取（也可以直接写在这里）
         self.welcome_message = self.config.get("welcome_message", "新人先看群精华\n不接受可以直接退")
@@ -65,3 +65,4 @@ class AutoWelcomePlugin(Star):
 
     async def terminate(self):
         logger.info("自动欢迎插件已卸载")
+
