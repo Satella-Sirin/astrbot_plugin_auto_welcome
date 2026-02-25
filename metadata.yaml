@@ -1,0 +1,21 @@
+name: astrbot_plugin_auto_welcome
+desc: 自动欢迎新成员（支持白名单群）
+author: Satella-Sirin
+version: 1.0.0
+repo: https://github.com/Satella-Sirin/astrbot_plugin_auto_welcome
+display_name: 自动欢迎
+support_platforms:
+  - aiocqhttp
+  - qq_official
+  - telegram
+astrbot_version: ">=4.16"
+config_schema:
+  group_whitelist:
+    type: list
+    description: 启用自动欢迎的群号列表
+    default: []
+    item_type: integer
+  welcome_message:
+    type: string
+    description: 欢迎消息模板（支持 {nickname} 变量）
+    default: "欢迎 {nickname} 加入本群！"
