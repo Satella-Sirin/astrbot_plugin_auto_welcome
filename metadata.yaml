@@ -3,3 +3,4 @@ desc: "自动欢迎新成员（支持白名单群）"
 version: "1.0.0"
 author: "Satella-Sirin"
 repo: https://github.com/Satella-Sirin/astrbot_plugin_auto_welcome
+config_schema: target_groups, welcome_message
