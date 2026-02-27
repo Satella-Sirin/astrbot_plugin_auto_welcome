@@ -62,6 +62,7 @@
   "welcome_messages": "12345678:欢迎 {at} 来到A群！\n87654321:欢迎 {at} 来到B群！",
   "segment_separator": "---"
 }
+
 ##📌 注意事项
 
 - 平台限制：本插件仅支持 OneBot 协议（aiocqhttp），请确保您使用的是该协议适配器。
