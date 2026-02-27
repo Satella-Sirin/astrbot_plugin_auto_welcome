@@ -7,10 +7,16 @@
     "item_type": "integer"
   },
   "welcome_message": {
-    "description": "欢迎消息模板",
+    "description": "全局默认欢迎消息模板",
     "type": "text",
-    "hint": "支持 {nickname}（显示昵称）和 {at}（@成员）两个占位符，段落内可直接换行（按回车键）。如需分段，请设置下方的分段符号。",
+    "hint": "当群没有专属消息时使用此模板。支持 {nickname} 和 {at}。",
     "default": "欢迎 {at} 加入本群！\n你的昵称是 {nickname}\n---\n请先阅读群规。"
+  },
+  "welcome_messages": {
+    "description": "各群专属欢迎消息（每行格式：群号:消息）",
+    "type": "text",
+    "hint": "例如：\n12345678:欢迎 {at} 来到A群！\n87654321:欢迎 {at} 来到B群！\n留空则全部使用全局默认消息。",
+    "default": ""
   },
   "segment_separator": {
     "description": "分段符号（可选）",
