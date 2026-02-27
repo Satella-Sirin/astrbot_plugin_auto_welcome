@@ -20,13 +20,19 @@ class AutoWelcomePlugin(Star):
             except (ValueError, TypeError):
                 logger.warning(f"配置中的群号 {g} 无法转为整数，已忽略")
 
-        # 读取全局默认欢迎消息
+        # 读取全局默认欢迎消息，并确保是字符串
         raw_message = self.config.get("welcome_message",
                                        "欢迎 {at} 加入本群！\n你的昵称是 {nickname}\n---\n请先阅读群规。")
+        if not isinstance(raw_message, str):
+            logger.warning(f"welcome_message 应为字符串，实际为 {type(raw_message)}，使用默认值")
+            raw_message = "欢迎 {at} 加入本群！\n你的昵称是 {nickname}\n---\n请先阅读群规。"
         self.welcome_message = raw_message.replace('\\n', '\n')
 
-        # 解析专属欢迎消息（多行文本格式：群号:消息）
+        # 解析专属欢迎消息（多行文本格式：群号:消息），并确保是字符串
         raw_welcome_messages = self.config.get("welcome_messages", "")
+        if not isinstance(raw_welcome_messages, str):
+            logger.warning(f"welcome_messages 应为字符串，实际为 {type(raw_welcome_messages)}，已忽略")
+            raw_welcome_messages = ""
         self.welcome_messages = {}
         if raw_welcome_messages:
             for line in raw_welcome_messages.split('\n'):
@@ -42,8 +48,12 @@ class AutoWelcomePlugin(Star):
                     logger.warning(f"忽略无效的专属消息行：{line}")
         logger.info(f"已加载 {len(self.welcome_messages)} 条专属消息")
 
-        # 读取分段符号
-        self.segment_separator = self.config.get("segment_separator", "")
+        # 读取分段符号，确保是字符串
+        raw_sep = self.config.get("segment_separator", "")
+        if not isinstance(raw_sep, str):
+            logger.warning(f"segment_separator 应为字符串，实际为 {type(raw_sep)}，已重置为空")
+            raw_sep = ""
+        self.segment_separator = raw_sep
         if self.segment_separator:
             logger.info(f"分段符号已设置: '{self.segment_separator}'")
 
@@ -57,12 +67,8 @@ class AutoWelcomePlugin(Star):
         raw = getattr(event.message_obj, 'raw_message', None)
         if not isinstance(raw, dict):
             return
-        try:
-            post_type = raw.get("post_type")
-            notice_type = raw.get("notice_type")
-            if post_type != "notice" or notice_type != "group_increase":
-                return
-        except AttributeError:
+        # 快速过滤非目标事件
+        if raw.get("post_type") != "notice" or raw.get("notice_type") != "group_increase":
             return
 
         group_id = raw.get("group_id")
@@ -71,31 +77,36 @@ class AutoWelcomePlugin(Star):
             logger.debug("入群事件缺少 group_id 或 user_id，忽略")
             return
 
+        # 转换群号和用户ID为整数
         try:
             group_id_int = int(group_id)
+            user_id_int = int(user_id)
         except (ValueError, TypeError):
-            logger.warning(f"无法将群号 {group_id} 转换为整数，跳过")
+            logger.warning(f"无法将群号 {group_id} 或用户ID {user_id} 转换为整数，跳过")
             return
 
         if group_id_int not in self.target_groups:
             return
 
-        nickname = await self._fetch_member_nickname(event, group_id_int, user_id)
+        nickname = await self._fetch_member_nickname(event, group_id_int, user_id_int)
 
-        # 选择消息模板（优先专属，否则全局默认）
+        # 选择消息模板
         message_template = self.welcome_messages.get(group_id_int, self.welcome_message)
         message = message_template.replace("{nickname}", nickname)
 
-        # 分段发送
+        # 分段
         if self.segment_separator:
             segments = message.split(self.segment_separator)
         else:
             segments = [message]
 
         valid_segments = [seg for seg in segments if seg.strip()]
+        if not valid_segments:
+            logger.info(f"群 {group_id_int} 欢迎消息为空，已跳过")
+            return
+
         for seg in valid_segments:
-            # 构建可能包含 {at} 的消息链
-            chain = self._build_message_chain(seg, user_id)
+            chain = self._build_message_chain(seg, user_id_int)
             if chain:
                 try:
                     yield event.chain_result(chain)
@@ -120,7 +131,9 @@ class AutoWelcomePlugin(Star):
             bot = getattr(event, 'bot', None)
             if bot and hasattr(bot, 'get_group_member_info'):
                 member_info = await bot.get_group_member_info(
-                    group_id=group_id, user_id=user_id, no_cache=True
+                    group_id=group_id,
+                    user_id=user_id,
+                    no_cache=True
                 )
                 if member_info:
                     return member_info.get('card') or member_info.get('nickname') or f"新成员({user_id})"
