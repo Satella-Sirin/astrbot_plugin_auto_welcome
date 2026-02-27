@@ -73,17 +73,24 @@ class AutoWelcomePlugin(Star):
 
     @filter.event_message_type(filter.EventMessageType.ALL)
     async def on_event(self, event: AstrMessageEvent):
-        # 快速过滤非群成员增加事件（OneBot 协议）
         raw = getattr(event.message_obj, 'raw_message', None)
         if not isinstance(raw, dict):
             return
+
+        # 只处理群成员增加事件
         if raw.get("post_type") != "notice" or raw.get("notice_type") != "group_increase":
             return
 
         group_id = raw.get("group_id")
         user_id = raw.get("user_id")
-        if group_id is None or user_id is None:
-            logger.debug("入群事件缺少 group_id 或 user_id，忽略")
+        self_id = raw.get("self_id")   # 机器人自己的QQ号
+        if group_id is None or user_id is None or self_id is None:
+            logger.debug("入群事件缺少必要字段，忽略")
+            return
+
+        # 排除机器人自身入群
+        if user_id == self_id:
+            logger.debug("机器人自身入群，跳过欢迎")
             return
 
         # 统一转换为整数
@@ -101,7 +108,7 @@ class AutoWelcomePlugin(Star):
         # 获取新成员昵称
         nickname = await self._fetch_member_nickname(event, group_id_int, user_id_int)
 
-        # 选择消息模板
+        # 选择消息模板（专属 > 全局）
         message_template = self.welcome_messages.get(group_id_int, self.welcome_message)
         message = message_template.replace("{nickname}", nickname)
 
