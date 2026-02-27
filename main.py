@@ -24,7 +24,7 @@ class AutoWelcomePlugin(Star):
 
         # 读取欢迎消息模板，处理手动输入的 \n 转义
         raw_message = self.config.get("welcome_message",
-                                       "欢迎 {nickname} 加入本群！\n请先阅读群规。")
+                                       "欢迎 {at} 加入本群！\n请先阅读群规。")
         self.welcome_message = raw_message.replace('\\n', '\n')
 
         # 读取分段符号，默认为空（不分段）
@@ -42,7 +42,6 @@ class AutoWelcomePlugin(Star):
         # 安全获取原始消息对象
         raw = getattr(event.message_obj, 'raw_message', None)
         if not isinstance(raw, dict):
-            # 不是字典格式，忽略（可能是其他类型事件）
             return
 
         # 仅处理群成员增加事件
@@ -52,10 +51,8 @@ class AutoWelcomePlugin(Star):
             if post_type != "notice" or notice_type != "group_increase":
                 return
         except AttributeError:
-            # raw 不是字典或缺少字段，忽略
             return
 
-        # 提取群号和用户ID
         group_id = raw.get("group_id")
         user_id = raw.get("user_id")
         if group_id is None or user_id is None:
@@ -73,36 +70,62 @@ class AutoWelcomePlugin(Star):
         if group_id_int not in self.target_groups:
             return
 
-        # 获取新成员昵称（优先使用群名片，其次昵称，最后回退）
-        nickname = self._get_nickname_from_event(event, user_id)
-        message = self.welcome_message.replace("{nickname}", nickname)
+        # 获取新成员的真实昵称（用于 {nickname} 变量）
+        nickname = await self._fetch_member_nickname(event, group_id_int, user_id)
+        # 先生成完整的消息文本（临时替换 nickname，但保留 {at}）
+        temp_message = self.welcome_message.replace("{nickname}", nickname)
 
         # 按分段符号拆分
         if self.segment_separator:
-            segments = message.split(self.segment_separator)
+            segments = temp_message.split(self.segment_separator)
         else:
-            segments = [message]
+            segments = [temp_message]
 
-        # 过滤空白段并发送
+        # 过滤空白段并发送（每个段可能包含 {at}）
         valid_segments = [seg for seg in segments if seg.strip()]
         for seg in valid_segments:
-            try:
-                yield event.chain_result([Comp.Plain(text=seg)])
-            except Exception as e:
-                logger.error(f"发送消息段失败: {e}")
+            # 将当前段中的 {at} 替换为 at 消息段，构建消息链
+            message_chain = self._build_message_chain(seg, user_id)
+            if message_chain:
+                try:
+                    yield event.chain_result(message_chain)
+                except Exception as e:
+                    logger.error(f"发送消息段失败: {e}")
         logger.info(f"已向群 {group_id_int} 发送欢迎消息 (共 {len(valid_segments)} 段)")
 
-    def _get_nickname_from_event(self, event: AstrMessageEvent, user_id: int) -> str:
+    def _build_message_chain(self, segment: str, user_id: int) -> list:
         """
-        尝试从事件中获取新成员昵称，回退到 "新成员(QQ号)"
+        将可能包含 {at} 的分段文本构建为消息链
+        例如: "欢迎 {at} 加入本群！" -> [Comp.Plain("欢迎 "), Comp.At(qq=user_id), Comp.Plain(" 加入本群！")]
         """
-        # 尝试从 sender 中获取（部分协议可能在事件中携带）
-        sender = getattr(event.message_obj, 'sender', None)
-        if sender:
-            nickname = getattr(sender, 'card', None) or getattr(sender, 'nickname', None)
-            if nickname:
-                return nickname
-        # TODO: 未来可扩展调用 get_group_member_info API
+        if "{at}" not in segment:
+            # 没有 at 占位符，直接返回纯文本
+            return [Comp.Plain(text=segment)]
+
+        parts = segment.split("{at}")
+        chain = []
+        for i, part in enumerate(parts):
+            if part:
+                chain.append(Comp.Plain(text=part))
+            # 在每部分之后插入 at（除了最后一部分之后）
+            if i < len(parts) - 1:
+                chain.append(Comp.At(qq=user_id))
+        return chain
+
+    async def _fetch_member_nickname(self, event: AstrMessageEvent, group_id: int, user_id: int) -> str:
+        """调用平台 API 获取群成员昵称（优先群名片，其次 QQ 昵称）"""
+        try:
+            bot = getattr(event, 'bot', None)
+            if bot is not None and hasattr(bot, 'get_group_member_info'):
+                member_info = await bot.get_group_member_info(
+                    group_id=group_id,
+                    user_id=user_id,
+                    no_cache=True
+                )
+                if member_info:
+                    return member_info.get('card') or member_info.get('nickname') or f"新成员({user_id})"
+        except Exception as e:
+            logger.debug(f"获取成员昵称失败: {e}")
         return f"新成员({user_id})"
 
     async def terminate(self):
