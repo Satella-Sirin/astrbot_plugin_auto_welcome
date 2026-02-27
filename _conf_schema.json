@@ -9,8 +9,8 @@
   "welcome_message": {
     "description": "欢迎消息模板",
     "type": "text",
-    "hint": "支持 {nickname} 变量，段落内可直接换行（按回车键）。如需分段，请设置下方的分段符号。",
-    "default": "欢迎 {nickname} 加入本群！\n\n请先阅读群规。"
+    "hint": "支持 {nickname}（显示昵称）和 {at}（@成员）两个占位符，段落内可直接换行（按回车键）。如需分段，请设置下方的分段符号。",
+    "default": "欢迎 {at} 加入本群！\n你的昵称是 {nickname}\n---\n请先阅读群规。"
   },
   "segment_separator": {
     "description": "分段符号（可选）",
