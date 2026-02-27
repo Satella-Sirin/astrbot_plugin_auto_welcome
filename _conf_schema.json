@@ -9,7 +9,7 @@
   "welcome_message": {
     "description": "全局默认欢迎消息模板",
     "type": "text",
-    "hint": "当群没有专属消息时使用此模板。支持 {nickname} 和 {at}。",
+    "hint": "当群没有专属消息时使用此模板。支持 {nickname}（昵称）和 {at}（@成员）。",
     "default": "欢迎 {at} 加入本群！\n你的昵称是 {nickname}\n---\n请先阅读群规。"
   },
   "welcome_messages": {
