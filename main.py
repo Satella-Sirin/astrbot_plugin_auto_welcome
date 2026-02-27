@@ -76,3 +76,4 @@ class AutoWelcomePlugin(Star):
 
     async def terminate(self):
         logger.info("自动欢迎插件已卸载")
+
