@@ -1,7 +1,9 @@
+import re
 from astrbot.api.event import filter, AstrMessageEvent
 from astrbot.api.star import Context, Star
 from astrbot.api import logger
 import astrbot.api.message_components as Comp
+
 
 class AutoWelcomePlugin(Star):
     def __init__(self, context: Context, config: dict = None):
@@ -28,34 +30,44 @@ class AutoWelcomePlugin(Star):
                 logger.warning(f"配置中的群号 {g} 无法转为整数，已忽略")
 
     def _parse_welcome_messages(self):
-        """解析全局默认消息和专属消息（支持多行续行）"""
+        """解析全局默认消息和专属消息（支持续行与空行保留）"""
         # 全局默认消息
-        raw_message = self.config.get("welcome_message",
-                                       "欢迎 {at} 加入本群！\n你的昵称是 {nickname}\n---\n请先阅读群规。")
+        raw_message = self.config.get(
+            "welcome_message",
+            "欢迎 {at} 加入本群！\n你的昵称是 {nickname}\n---\n请先阅读群规。"
+        )
         if isinstance(raw_message, str):
             self.welcome_message = raw_message.replace('\\n', '\n')
         else:
             logger.warning("welcome_message 应为字符串，已使用默认值")
             self.welcome_message = "欢迎 {at} 加入本群！\n你的昵称是 {nickname}\n---\n请先阅读群规。"
 
-        # 专属消息（多行文本，支持续行）
+        # 专属消息（多行文本，支持续行和空行）
         raw_specials = self.config.get("welcome_messages", "")
         self.welcome_messages = {}
         if isinstance(raw_specials, str):
-            # 按行拆分，并合并续行（不包含冒号的行视为上一行的续行）
             lines = raw_specials.split('\n')
             merged = []
             current = None
             for line in lines:
-                line = line.rstrip()
-                if ':' in line:
+                # 去除行尾换行符，保留左侧空格
+                line = line.rstrip('\r')
+                # 判断是否为新群号配置行
+                if re.match(r'^\s*\d+\s*:', line):
                     if current is not None:
                         merged.append(current)
                     current = line
                 else:
-                    if current is not None and line:
-                        current += '\n' + line
-                    # 忽略开头或单独的空行
+                    if current is not None:
+                        # 续行处理：空行保留为一个换行符
+                        if line == "":
+                            current += '\n'
+                        else:
+                            current += '\n' + line
+                    else:
+                        # 配置以非群号开头（无效行），忽略并警告
+                        if line.strip():
+                            logger.warning(f"专属消息配置起始行无效，已忽略: {line}")
             if current is not None:
                 merged.append(current)
 
@@ -63,6 +75,7 @@ class AutoWelcomePlugin(Star):
                 try:
                     gid_str, msg = item.split(':', 1)
                     gid_int = int(gid_str.strip())
+                    # 消息内容中的 \n 转义为真实换行
                     msg = msg.strip().replace('\\n', '\n')
                     self.welcome_messages[gid_int] = msg
                 except (ValueError, TypeError):
@@ -108,10 +121,13 @@ class AutoWelcomePlugin(Star):
             user_id_int = int(user_id)
             self_id_int = int(self_id)
         except (ValueError, TypeError) as e:
-            logger.warning(f"群号或用户ID无法转换为整数: group_id={group_id}, user_id={user_id}, self_id={self_id}, error={e}")
+            logger.warning(
+                f"群号或用户ID无法转换为整数: "
+                f"group_id={group_id}, user_id={user_id}, self_id={self_id}, error={e}"
+            )
             return
 
-        # 排除机器人自身入群（比较整数）
+        # 排除机器人自身入群
         if user_id_int == self_id_int:
             logger.debug(f"机器人自身入群，跳过欢迎 (user_id={user_id_int})")
             return
@@ -120,8 +136,9 @@ class AutoWelcomePlugin(Star):
         if group_id_int not in self.target_groups:
             return
 
-        # 获取新成员昵称
+        # 获取新成员昵称并净化
         nickname = await self._fetch_member_nickname(event, group_id_int, user_id_int)
+        nickname = self._escape_nickname(nickname)
 
         # 选择消息模板（专属 > 全局）
         message_template = self.welcome_messages.get(group_id_int, self.welcome_message)
@@ -144,8 +161,15 @@ class AutoWelcomePlugin(Star):
                 try:
                     yield event.chain_result(chain)
                 except Exception as e:
-                    logger.error(f"发送消息段失败 (群 {group_id_int}, 段 {idx+1}/{len(valid_segments)}, 内容: {seg[:30]}...): {e}")
+                    logger.error(
+                        f"发送消息段失败 (群 {group_id_int}, 段 {idx+1}/{len(valid_segments)}, "
+                        f"内容: {seg[:30]}...): {e}"
+                    )
         logger.info(f"已向群 {group_id_int} 发送欢迎消息 (共 {len(valid_segments)} 段)")
+
+    def _escape_nickname(self, nickname: str) -> str:
+        """将昵称中的 { 和 } 替换为全角字符，防止干扰占位符解析"""
+        return nickname.replace('{', '｛').replace('}', '｝')
 
     def _build_message_chain(self, segment: str, user_id: int) -> list:
         """将可能包含 {at} 的分段文本构建为消息链"""
@@ -160,7 +184,9 @@ class AutoWelcomePlugin(Star):
                 chain.append(Comp.At(qq=user_id))
         return chain
 
-    async def _fetch_member_nickname(self, event: AstrMessageEvent, group_id: int, user_id: int) -> str:
+    async def _fetch_member_nickname(
+        self, event: AstrMessageEvent, group_id: int, user_id: int
+    ) -> str:
         """调用平台 API 获取群成员昵称（优先群名片，其次 QQ 昵称）"""
         try:
             bot = getattr(event, 'bot', None)
@@ -169,7 +195,11 @@ class AutoWelcomePlugin(Star):
                     group_id=group_id, user_id=user_id, no_cache=True
                 )
                 if member_info:
-                    return member_info.get('card') or member_info.get('nickname') or f"新成员({user_id})"
+                    return (
+                        member_info.get('card')
+                        or member_info.get('nickname')
+                        or f"新成员({user_id})"
+                    )
         except Exception as e:
             logger.debug(f"获取成员昵称失败 (group={group_id}, user={user_id}): {e}")
         return f"新成员({user_id})"
