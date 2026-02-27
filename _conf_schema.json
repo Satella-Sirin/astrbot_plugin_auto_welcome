@@ -9,7 +9,13 @@
   "welcome_message": {
     "description": "欢迎消息模板",
     "type": "text",
-    "hint": "直接在文本框内按回车换行（不要手动输入\\n），支持 {nickname} 变量",
+    "hint": "支持 {nickname} 变量，段落内可直接换行。如需分多条消息发送，请设置下方的分段符号。",
     "default": "新人先看群精华\n\n不接受可以直接退"
+  },
+  "segment_separator": {
+    "description": "分段符号（可选）",
+    "type": "string",
+    "hint": "若填写此符号，插件会将欢迎消息按此符号拆分成多条独立消息发送。请使用不会出现在消息内容中的标记，例如 --- 或 [split] 。留空则不分段。",
+    "default": ""
   }
 }
