@@ -1,7 +1,7 @@
 name: astrbot_plugin_auto_welcome
-desc: 自动欢迎新成员，支持白名单群、自定义消息和分段发送（自定义分隔符）
+desc: 自动欢迎新成员，支持白名单群、自定义消息和分段发送（自定义分隔符），并可为不同群设置专属欢迎词
 author: Satella-Sirin
 version: 1.0.0
 repo: https://github.com/Satella-Sirin/astrbot_plugin_auto_welcome
-config_schema: target_groups, welcome_message, segment_separator
+config_schema: target_groups, welcome_message, welcome_messages, segment_separator
 license: MIT
