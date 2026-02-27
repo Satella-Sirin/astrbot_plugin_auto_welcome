@@ -28,7 +28,7 @@ class AutoWelcomePlugin(Star):
                 logger.warning(f"配置中的群号 {g} 无法转为整数，已忽略")
 
     def _parse_welcome_messages(self):
-        """解析全局默认消息和专属消息"""
+        """解析全局默认消息和专属消息（支持多行续行）"""
         # 全局默认消息
         raw_message = self.config.get("welcome_message",
                                        "欢迎 {at} 加入本群！\n你的昵称是 {nickname}\n---\n请先阅读群规。")
@@ -38,21 +38,35 @@ class AutoWelcomePlugin(Star):
             logger.warning("welcome_message 应为字符串，已使用默认值")
             self.welcome_message = "欢迎 {at} 加入本群！\n你的昵称是 {nickname}\n---\n请先阅读群规。"
 
-        # 专属消息（多行文本）
+        # 专属消息（多行文本，支持续行）
         raw_specials = self.config.get("welcome_messages", "")
         self.welcome_messages = {}
         if isinstance(raw_specials, str):
-            for line in raw_specials.split('\n'):
-                line = line.strip()
-                if not line or ':' not in line:
-                    continue
+            # 按行拆分，并合并续行（不包含冒号的行视为上一行的续行）
+            lines = raw_specials.split('\n')
+            merged = []
+            current = None
+            for line in lines:
+                line = line.rstrip()
+                if ':' in line:
+                    if current is not None:
+                        merged.append(current)
+                    current = line
+                else:
+                    if current is not None and line:
+                        current += '\n' + line
+                    # 忽略开头或单独的空行
+            if current is not None:
+                merged.append(current)
+
+            for item in merged:
                 try:
-                    gid_str, msg = line.split(':', 1)
+                    gid_str, msg = item.split(':', 1)
                     gid_int = int(gid_str.strip())
                     msg = msg.strip().replace('\\n', '\n')
                     self.welcome_messages[gid_int] = msg
                 except (ValueError, TypeError):
-                    logger.warning(f"忽略无效的专属消息行：{line}")
+                    logger.warning(f"忽略无效的专属消息行：{item}")
         else:
             logger.warning("welcome_messages 应为字符串，已忽略")
         logger.info(f"已加载 {len(self.welcome_messages)} 条专属消息")
@@ -83,22 +97,23 @@ class AutoWelcomePlugin(Star):
 
         group_id = raw.get("group_id")
         user_id = raw.get("user_id")
-        self_id = raw.get("self_id")   # 机器人自己的QQ号
+        self_id = raw.get("self_id")
         if group_id is None or user_id is None or self_id is None:
             logger.debug("入群事件缺少必要字段，忽略")
-            return
-
-        # 排除机器人自身入群
-        if user_id == self_id:
-            logger.debug("机器人自身入群，跳过欢迎")
             return
 
         # 统一转换为整数
         try:
             group_id_int = int(group_id)
             user_id_int = int(user_id)
-        except (ValueError, TypeError):
-            logger.warning(f"群号或用户ID无法转换为整数: group_id={group_id}, user_id={user_id}")
+            self_id_int = int(self_id)
+        except (ValueError, TypeError) as e:
+            logger.warning(f"群号或用户ID无法转换为整数: group_id={group_id}, user_id={user_id}, self_id={self_id}, error={e}")
+            return
+
+        # 排除机器人自身入群（比较整数）
+        if user_id_int == self_id_int:
+            logger.debug(f"机器人自身入群，跳过欢迎 (user_id={user_id_int})")
             return
 
         # 白名单检查
@@ -123,13 +138,13 @@ class AutoWelcomePlugin(Star):
             logger.info(f"群 {group_id_int} 的欢迎消息为空，已跳过")
             return
 
-        for seg in valid_segments:
+        for idx, seg in enumerate(valid_segments):
             chain = self._build_message_chain(seg, user_id_int)
             if chain:
                 try:
                     yield event.chain_result(chain)
                 except Exception as e:
-                    logger.error(f"发送消息段失败: {e}")
+                    logger.error(f"发送消息段失败 (群 {group_id_int}, 段 {idx+1}/{len(valid_segments)}, 内容: {seg[:30]}...): {e}")
         logger.info(f"已向群 {group_id_int} 发送欢迎消息 (共 {len(valid_segments)} 段)")
 
     def _build_message_chain(self, segment: str, user_id: int) -> list:
@@ -149,14 +164,14 @@ class AutoWelcomePlugin(Star):
         """调用平台 API 获取群成员昵称（优先群名片，其次 QQ 昵称）"""
         try:
             bot = getattr(event, 'bot', None)
-            if bot and hasattr(bot, 'get_group_member_info'):
+            if bot is not None and hasattr(bot, 'get_group_member_info'):
                 member_info = await bot.get_group_member_info(
                     group_id=group_id, user_id=user_id, no_cache=True
                 )
                 if member_info:
                     return member_info.get('card') or member_info.get('nickname') or f"新成员({user_id})"
         except Exception as e:
-            logger.debug(f"获取成员昵称失败: {e}")
+            logger.debug(f"获取成员昵称失败 (group={group_id}, user={user_id}): {e}")
         return f"新成员({user_id})"
 
     async def terminate(self):
